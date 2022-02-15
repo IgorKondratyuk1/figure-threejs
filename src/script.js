@@ -8,9 +8,31 @@ import VertexNormalsHelper from 'three/examples/jsm/helpers/VertexNormalsHelper'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 
 // once everything is loaded, we run our Three.js stuff.
+
+
+
 function init() {
 
     var stats = initStats();
+
+    let boxGeometry = new THREE.BoxGeometry( 0.5, 0.5, 0.5 );
+    const splineHelperObjects = [];
+    let splinePointsLength = 31;
+    const positions = [];
+    const point = new THREE.Vector3();
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const onUpPosition = new THREE.Vector2();
+    const onDownPosition = new THREE.Vector2();
+
+    let transformControl;
+    const ARC_SEGMENTS = 200;
+    const splines = {};
+    // const params = {
+    //     uniform: true,
+    //     tension: 0.5,
+    //     exportSpline: exportSpline
+    // };
 
     // create a scene, that will hold all our elements such as objects, cameras and lights.
     var scene = new THREE.Scene();
@@ -26,8 +48,35 @@ function init() {
     // create a render and set the size
     var webGLRenderer = new THREE.WebGLRenderer();
     webGLRenderer.setClearColor(new THREE.Color(0xEEEEEE, 1.0));
+    webGLRenderer.setPixelRatio( window.devicePixelRatio );
     webGLRenderer.setSize(window.innerWidth, window.innerHeight);
+
     let orbitControls = new OrbitControls( camera, webGLRenderer.domElement );
+
+    orbitControls.damping = 0.2;
+    orbitControls.addEventListener( 'change', render );
+
+    transformControl = new TransformControls( camera, webGLRenderer.domElement );
+    transformControl.addEventListener( 'change', render );
+    transformControl.addEventListener( 'dragging-changed', function ( event ) {
+
+        orbitControls.enabled = ! event.value;
+
+    } );
+    scene.add( transformControl );
+
+    transformControl.addEventListener( 'objectChange', function () {
+
+        updateSplineOutline();
+
+    } );
+
+    document.addEventListener( 'pointerdown', onPointerDown );
+    document.addEventListener( 'pointerup', onPointerUp );
+    document.addEventListener( 'pointermove', onPointerMove );
+    window.addEventListener( 'resize', onWindowResize );
+
+
 
     // position and point the camera to the center of the scene
     camera.position.x = -30;
@@ -38,8 +87,6 @@ function init() {
     // add the output of the renderer to the html element
     document.getElementById("WebGL-output").appendChild(webGLRenderer.domElement);
 
-    // the points group
-    var spGroup;
     // the mesh
     var latheMesh;
 
@@ -52,26 +99,28 @@ function init() {
         this.segments = 12;
         this.phiStart = 0;
         this.phiLength = 2 * Math.PI;
-        this.exportSpline = function exportSpline() {
-
+        this.uniform =  true;
+        this.exportSpline = function () {
+            const result = [];
             const strplace = [];
-            console.log(splineHelperObjects[0].position);
             for ( let i = 0; i < splinePointsLength; i ++ ) {
         
                 const p = splineHelperObjects[ i ].position;
-                strplace.push( `new THREE.Vector3(${p.x}, ${p.y}, ${p.z})` );
+                result.push(splineHelperObjects[ i ].position);
+                //strplace.push( `new THREE.Vector3(${p.x}, ${p.y}, ${p.z})` );
         
             }
         
-            console.log( strplace.join( ',\n' ) );
+            //console.log( strplace.join( ',\n' ) );
             const code = '[' + ( strplace.join( ',\n\t' ) ) + ']';
-            prompt( 'copy and paste code', code );
-        
+            //console.log(result);
+            return result;
         };
         this.redraw = function () {
-            scene.remove(spGroup);
             scene.remove(latheMesh);
-            generatePoints(controls.segments, controls.phiStart, controls.phiLength);
+            let p = controls.exportSpline();
+            generatePoints(p, controls.segments, controls.phiStart, controls.phiLength);
+            render();
         };
     };
 
@@ -83,100 +132,63 @@ function init() {
 
 
     //________________________________________________________________________________//
+
+
     let pointsArr = [];
     var height = 5;
     var count = 30;
     for (var i = 0; i < count; i++) {
         //points.push(new THREE.Vector3((Math.sin(i * 0.2) + Math.cos(i * 0.3)) * height + 12, i, ( i - count ) + count / 2));
         pointsArr.push(new THREE.Vector3((Math.sin(i * 0.04) + Math.cos(i * 0.25)) * height + 4, i, ( i - count ) + count / 2));
+        
     }
-    var curveCR = new THREE.CatmullRomCurve3(pointsArr);
-    var points = curveCR.getPoints(30);
-    var geometry = new THREE.BufferGeometry().setFromPoints( points );
-    var material = new THREE.LineBasicMaterial( { color : 0xff0000 } );
+
+     var curveCR = new THREE.CatmullRomCurve3(pointsArr);
+     var points = curveCR.getPoints(30);
+
+
+    /*******
+     * Curves
+     *********/
+
+    for ( let i = 0; i < splinePointsLength; i ++ ) {
+
+        addSplineObject( positions[ i ] );
+
+    }
+
+    positions.length = 0;
+
+    for ( let i = 0; i < splinePointsLength; i ++ ) {
+
+        positions.push( splineHelperObjects[ i ].position );
+
+    }
+
+    boxGeometry = new THREE.BufferGeometry();
+    boxGeometry.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( ARC_SEGMENTS * 3 ), 3 ) );
+
+    let curve = new THREE.CatmullRomCurve3( positions );
+    curve.curveType = 'catmullrom';
+    curve.mesh = new THREE.Line( boxGeometry.clone(), new THREE.LineBasicMaterial( {
+        color: 0xff0000,
+        opacity: 0.35
+    } ) );
+    splines.uniform = curve;
     
-    //Крива
-    var curveObject = new THREE.Line( geometry, material );
-    curveObject.userData.name = 'CurveHitBox'; // TEST
-    curveObject.userData.drag = true;
-    scene.add(curveObject);
+    for ( const k in splines ) {
 
-    // Точки
-    var pointsOfCurve = new THREE.Points(geometry, new THREE.PointsMaterial({
-        size: 0.9,
-        color: "blue"
-    }));
-    scene.add(pointsOfCurve);
+        const spline = splines[ k ];
+        scene.add( spline.mesh );
+
+    }
+
+    load(points);
 
 
-    var latheGeometry = new THREE.LatheGeometry(points, 10, 0, 2 * Math.PI);
-    latheMesh = createMesh(latheGeometry);
-    scene.add(latheMesh);
-
-
-
-
-    // var raycaster = new THREE.Raycaster();
-    // raycaster.params.Points.threshold = 0.25;
-    // var mouse = new THREE.Vector2();
-    // var intersects = null;
-    // var plane = new THREE.Plane();
-    // var planeNormal = new THREE.Vector3();
-    // var currentIndex = null;
-    // var planePoint = new THREE.Vector3();
-    // var dragging = false;
-
-    // window.addEventListener("mousedown", mouseDown, false);
-    // window.addEventListener("mousemove", mouseMove, false);
-    // window.addEventListener("mouseup", mouseUp, false);
-
-    // function mouseDown(event) {
-    //     setRaycaster(event);
-    //     getIndex();
-    //     dragging = true;
-    // }
-
-    // function mouseMove(event) {
-    // if (dragging && currentIndex !== null) {
-    //     setRaycaster(event);
-    //     raycaster.ray.intersectPlane(plane, planePoint);
-    //     geometry.attributes.position.setXYZ(currentIndex, planePoint.x, planePoint.y, planePoint.z);
-    //     geometry.attributes.position.needsUpdate = true;
-    // }
-    // }
-
-    // function mouseUp(event) {
-    // dragging = false;
-    // currentIndex = null;
-    // }
-
-    // function getIndex() {
-    // intersects = raycaster.intersectObject(points);
-    // if (intersects.length === 0) {
-    //     currentIndex = null;
-    //     return;
-    // }
-    // currentIndex = intersects[0].index;
-    // setPlane(intersects[0].point);
-    // }
-
-    // function setPlane(point) {
-    // planeNormal.subVectors(camera.position, point).normalize();
-    // plane.setFromNormalAndCoplanarPoint(planeNormal, point);
-    // }
-
-    // function setRaycaster(event) {
-    // getMouse(event);
-    // raycaster.setFromCamera(mouse, camera);
-    // }
-
-    // function getMouse(event) {
-    // mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    // mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    // }
-
-
-
+    // var latheGeometry = new THREE.LatheGeometry(points, 10, 0, 2 * Math.PI);
+    // latheMesh = createMesh(latheGeometry);
+    // scene.add(latheMesh);
 
 
     //________________________________________________________________________________//
@@ -184,31 +196,17 @@ function init() {
 
     render();
 
-    function generatePoints(segments, phiStart, phiLength) {
+    function generatePoints(points, segments, phiStart, phiLength) {
         // add 10 random spheres
-        var points = [];
-        var height = 5;
-        var count = 30;
-        for (var i = 0; i < count; i++) {
-            //points.push(new THREE.Vector3((Math.sin(i * 0.2) + Math.cos(i * 0.3)) * height + 12, i, ( i - count ) + count / 2));
-            points.push(new THREE.Vector3((Math.sin(i * 0.04) + Math.cos(i * 0.25)) * height + 4, i, ( i - count ) + count / 2));
+        // var points = [];
+        // var height = 5;
+        // var count = 30;
+        // for (var i = 0; i < count; i++) {
+        //     //points.push(new THREE.Vector3((Math.sin(i * 0.2) + Math.cos(i * 0.3)) * height + 12, i, ( i - count ) + count / 2));
+        //     points.push(new THREE.Vector3((Math.sin(i * 0.04) + Math.cos(i * 0.25)) * height + 4, i, ( i - count ) + count / 2));
 
-        }
-
-
-        spGroup = new THREE.Object3D();
-        var material = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: false});
-        points.forEach(function (point) {
-            
-            var spGeom = new THREE.SphereGeometry(0.2);
-            var spMesh = new THREE.Mesh(spGeom, material);
-            spMesh.position.copy(point);
-            spGroup.add(spMesh);
-        });
-
-        // add the points as a group to the scene
-        scene.add(spGroup);
-
+        // }
+        scene.remove(latheMesh);
         // use the same points to create a LatheGeometry
         var latheGeometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
         latheMesh = createMesh(latheGeometry);
@@ -231,10 +229,8 @@ function init() {
 
     function render() {
         stats.update();
-        //spGroup.rotation.x = step;
-        //latheMesh.rotation.x = step += 0.01;
-
-        requestAnimationFrame(render);
+        //requestAnimationFrame(render);
+        splines.uniform.mesh.visible = controls.uniform;
         webGLRenderer.render(scene, camera);
     }
 
@@ -253,61 +249,134 @@ function init() {
         return stats;
     }
 
+
+
+
+    function addSplineObject( position ) {
+
+        const material = new THREE.MeshLambertMaterial( { color: Math.random() * 0xffffff } );
+        const object = new THREE.Mesh( boxGeometry, material );
+    
+        if ( position ) {
+    
+            object.position.copy( position );
+    
+        } else {
+    
+            object.position.x = Math.random() * 1000 - 500;
+            object.position.y = Math.random() * 600;
+            object.position.z = Math.random() * 800 - 400;
+    
+        }
+    
+        scene.add( object );
+        splineHelperObjects.push( object );
+        return object;
+    
+    }
+    
+    function addPoint() {
+    
+        splinePointsLength ++;
+    
+        positions.push( addSplineObject().position );
+    
+        updateSplineOutline();
+    
+        render();
+    
+    }
+
+    function updateSplineOutline() {
+        console.log('a');
+        for ( const k in splines ) {
+    
+            const spline = splines[ k ];
+    
+            const splineMesh = spline.mesh;
+            const position = splineMesh.geometry.attributes.position;
+    
+            for ( let i = 0; i < ARC_SEGMENTS; i ++ ) {
+    
+                const t = i / ( ARC_SEGMENTS - 1 );
+                spline.getPoint( t, point );
+                position.setXYZ( i, point.x, point.y, point.z );
+    
+            }
+    
+            position.needsUpdate = true;
+    
+        }
+        let p = controls.exportSpline();
+        generatePoints(p, controls.segments, controls.phiStart, controls.phiLength);
+    }
+
+    function load( new_positions ) {
+        while ( new_positions.length > positions.length ) {
+    
+            addPoint();
+    
+        }
+    
+        for ( let i = 0; i < positions.length; i ++ ) {
+    
+            positions[ i ].copy( new_positions[ i ] );
+    
+        }
+        updateSplineOutline();
+    
+    }
+
+    function onPointerDown( event ) {
+
+        onDownPosition.x = event.clientX;
+        onDownPosition.y = event.clientY;
+    
+    }
+    
+    function onPointerUp(event) {
+    
+        onUpPosition.x = event.clientX;
+        onUpPosition.y = event.clientY;
+    
+        if ( onDownPosition.distanceTo( onUpPosition ) === 0 ) transformControl.detach();
+    
+    }
+    
+    function onPointerMove( event ) {
+    
+        pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+        pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+    
+        raycaster.setFromCamera( pointer, camera );
+    
+        const intersects = raycaster.intersectObjects( splineHelperObjects, false );
+    
+        if ( intersects.length > 0 ) {
+    
+            const object = intersects[ 0 ].object;
+    
+            if ( object !== transformControl.object ) {
+    
+                transformControl.attach( object );
+    
+            }
+    
+        }
+    
+    }
+    
+    function onWindowResize() {
+    
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+    
+        webGLRenderer.setSize( window.innerWidth, window.innerHeight );
+    
+        render();
+    
+    }
+
 }
-
-
-function Curve( vectorsArray, handles, section ) {
-
-    let curve = new THREE.CatmullRomCurve3( vectorsArray );
-    curve.curveType = 'catmullrom';
-    curve.tension = 0.55 ;
-
-    let lineGeom = new THREE.BufferGeometry();
-
-    let points = curve.getPoints(64);
-
-    lineGeom.setFromPoints( points );
-
-    let lineObj = new THREE.Line( lineGeom,
-        new THREE.LineBasicMaterial({ color : 0xff00ff }) );
-
-    
-    let tube = new THREE.Mesh(
-        new THREE.TubeBufferGeometry( curve, 64, 0.32 ),
-        tubeMaterial
-        );
-    tube.name = 'line_helper';
-
-    raycastList.push( tube );
-    
-    let obj = {
-        curve,
-        lineGeom,
-        points,
-        lineObj,
-        tube,
-        handles,
-        type: "section_curve",
-        section
-    };
-
-    obj.curve.section_curve = obj ;
-    obj.tube.section_curve = obj ;
-    obj.lineObj.section_curve = obj ;
-    obj.handles.section_curve = obj ;
-    obj.points.section_curve = obj ;
-
-
-    for ( let i=0 ; i<obj.handles.length ; i++ ) {
-        obj.handles[i].section_curves.push( obj ) ;
-    };
-
-    return obj ;
-
-};
-
-
-
-
 
 window.onload = init;
