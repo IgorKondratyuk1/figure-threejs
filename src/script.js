@@ -4,16 +4,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import * as dat from 'dat.gui'
 import { SceneUtils } from 'three/examples/jsm/utils/SceneUtils.js';
 import Stats from 'three/examples/jsm/libs/stats.module';
-import VertexNormalsHelper from 'three/examples/jsm/helpers/VertexNormalsHelper';
+import { VertexNormalsHelper } from 'three/examples/jsm/helpers/VertexNormalsHelper';
+import { VertexTangentsHelper } from 'three/examples/jsm/helpers/VertexTangentsHelper';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
-
-// once everything is loaded, we run our Three.js stuff.
-
 
 
 function init() {
 
-    var stats = initStats();
+    let stats = initStats();
 
     let boxGeometry = new THREE.BoxGeometry( 0.5, 0.5, 0.5 );
     const splineHelperObjects = [];
@@ -28,25 +26,20 @@ function init() {
     let transformControl;
     const ARC_SEGMENTS = 200;
     const splines = {};
-    // const params = {
-    //     uniform: true,
-    //     tension: 0.5,
-    //     exportSpline: exportSpline
-    // };
 
     // create a scene, that will hold all our elements such as objects, cameras and lights.
-    var scene = new THREE.Scene();
+    let scene = new THREE.Scene();
     scene.background = new THREE.Color( 0xffee93 ); //0xfec994
     const axesHelper = new THREE.AxesHelper( 500 );
     scene.add( axesHelper );
-    var plane = new THREE.GridHelper(300, 300);
+    let plane = new THREE.GridHelper(300, 300);
     plane.material.color = new THREE.Color('white');
     scene.add(plane);
     // create a camera, which defines where we're looking at.
-    var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    let camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
 
     // create a render and set the size
-    var webGLRenderer = new THREE.WebGLRenderer();
+    let webGLRenderer = new THREE.WebGLRenderer();
     webGLRenderer.setClearColor(new THREE.Color(0xEEEEEE, 1.0));
     webGLRenderer.setPixelRatio( window.devicePixelRatio );
     webGLRenderer.setSize(window.innerWidth, window.innerHeight);
@@ -79,21 +72,22 @@ function init() {
 
 
     // position and point the camera to the center of the scene
-    camera.position.x = -30;
-    camera.position.y = 40;
-    camera.position.z = 50;
-    camera.lookAt(new THREE.Vector3(10, 0, 0));
+    camera.position.x = 0;
+    camera.position.y = window.innerWidth / window.innerHeight;
+    camera.position.z = 100;
+    camera.lookAt(new THREE.Vector3(0, 0, 0));
 
     // add the output of the renderer to the html element
     document.getElementById("WebGL-output").appendChild(webGLRenderer.domElement);
 
     // the mesh
-    var latheMesh;
-
-    //generatePoints(12, 2, 2 * Math.PI);
+    let latheMesh;
+    let latheGeometry;
+    let normalsHelper;
+    let newPoints;
 
     // setup the control gui
-    var controls = new function () {
+    let controls = new function () {
         // we need the first child, since it's a multimaterial
 
         this.segments = 12;
@@ -102,49 +96,51 @@ function init() {
         this.uniform =  true;
         this.exportSpline = function () {
             const result = [];
-            const strplace = [];
             for ( let i = 0; i < splinePointsLength; i ++ ) {
-        
-                const p = splineHelperObjects[ i ].position;
-                result.push(splineHelperObjects[ i ].position);
-                //strplace.push( `new THREE.Vector3(${p.x}, ${p.y}, ${p.z})` );
-        
+                //splineHelperObjects[i].position.z += 10;
+                result.push(splineHelperObjects[i].position);
             }
-        
-            //console.log( strplace.join( ',\n' ) );
-            const code = '[' + ( strplace.join( ',\n\t' ) ) + ']';
-            //console.log(result);
+            console.log(result);
             return result;
         };
+        this.showNormals = function() {
+            scene.remove(latheMesh);
+            scene.remove(normalsHelper);
+            newPoints = controls.exportSpline();
+            generatePointsWithNormals(newPoints, controls.segments, controls.phiStart, controls.phiLength);
+            render();
+        }
         this.redraw = function () {
             scene.remove(latheMesh);
-            let p = controls.exportSpline();
-            generatePoints(p, controls.segments, controls.phiStart, controls.phiLength);
+            scene.remove(normalsHelper);
+            newPoints = controls.exportSpline();
+            generatePoints(newPoints, controls.segments, controls.phiStart, controls.phiLength);
             render();
         };
     };
 
-    var gui = new dat.GUI();
+    let gui = new dat.GUI();
     gui.add(controls, 'segments', 0, 50).step(1).onChange(controls.redraw);
     gui.add(controls, 'phiStart', 0, 2 * Math.PI).onChange(controls.redraw);
     gui.add(controls, 'phiLength', 0, 2 * Math.PI).onChange(controls.redraw);
-    gui.add(controls, 'exportSpline' );
+    gui.add(controls, 'showNormals');
+    gui.add(controls, 'redraw');
 
 
     //________________________________________________________________________________//
 
 
     let pointsArr = [];
-    var height = 5;
-    var count = 30;
-    for (var i = 0; i < count; i++) {
+    let height = 5;
+    let count = 30;
+    for (let i = 0; i < count; i++) {
         //points.push(new THREE.Vector3((Math.sin(i * 0.2) + Math.cos(i * 0.3)) * height + 12, i, ( i - count ) + count / 2));
         pointsArr.push(new THREE.Vector3((Math.sin(i * 0.04) + Math.cos(i * 0.25)) * height + 4, i, ( i - count ) + count / 2));
         
     }
 
-     var curveCR = new THREE.CatmullRomCurve3(pointsArr);
-     var points = curveCR.getPoints(30);
+     let curveCR = new THREE.CatmullRomCurve3(pointsArr);
+     let points = curveCR.getPoints(30);
 
 
     /*******
@@ -175,55 +171,66 @@ function init() {
         opacity: 0.35
     } ) );
     splines.uniform = curve;
-    
+
+
     for ( const k in splines ) {
 
         const spline = splines[ k ];
         scene.add( spline.mesh );
 
     }
-
+    
     load(points);
-
-
-    // var latheGeometry = new THREE.LatheGeometry(points, 10, 0, 2 * Math.PI);
-    // latheMesh = createMesh(latheGeometry);
-    // scene.add(latheMesh);
-
 
     //________________________________________________________________________________//
 
 
     render();
 
+    
     function generatePoints(points, segments, phiStart, phiLength) {
-        // add 10 random spheres
-        // var points = [];
-        // var height = 5;
-        // var count = 30;
-        // for (var i = 0; i < count; i++) {
-        //     //points.push(new THREE.Vector3((Math.sin(i * 0.2) + Math.cos(i * 0.3)) * height + 12, i, ( i - count ) + count / 2));
-        //     points.push(new THREE.Vector3((Math.sin(i * 0.04) + Math.cos(i * 0.25)) * height + 4, i, ( i - count ) + count / 2));
 
-        // }
         scene.remove(latheMesh);
+        scene.remove(normalsHelper);
+
         // use the same points to create a LatheGeometry
-        var latheGeometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
+        latheGeometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
+
         latheMesh = createMesh(latheGeometry);
+
         scene.add(latheMesh);
+    }
+
+    function generatePointsWithNormals(points, segments, phiStart, phiLength) {
+
+        scene.remove(latheMesh);
+        scene.remove(normalsHelper);
+
+        // use the same points to create a LatheGeometry
+        latheGeometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
+
+        let meshMaterial = new THREE.MeshNormalMaterial();
+        meshMaterial.side = THREE.DoubleSide;
+        latheMesh = new THREE.Mesh( latheGeometry, meshMaterial );
+
+        latheGeometry.computeVertexNormals();
+        normalsHelper = new VertexNormalsHelper( latheMesh, 5, 'lightgreen');
+        
+        scene.add(latheMesh);
+        scene.add(normalsHelper);
+
     }
 
     function createMesh(geom) {
 
         // assign two materials
-        //  var meshMaterial = new THREE.MeshBasicMaterial({color:0x00ff00, transparent:true, opacity:0.6});
-        var meshMaterial = new THREE.MeshNormalMaterial();
+        let meshMaterial = new THREE.MeshNormalMaterial();
         meshMaterial.side = THREE.DoubleSide;
-        var wireFrameMat = new THREE.MeshBasicMaterial();
+        let wireFrameMat = new THREE.MeshBasicMaterial();
         wireFrameMat.wireframe = true;
 
         // create a multimaterial
-        var mesh = SceneUtils.createMultiMaterialObject(geom, [meshMaterial, wireFrameMat]);
+        let mesh = SceneUtils.createMultiMaterialObject(geom, [meshMaterial, wireFrameMat]);
         return mesh;
     }
 
@@ -236,7 +243,7 @@ function init() {
 
     function initStats() {
 
-        var stats = new Stats();
+        let stats = new Stats();
         stats.setMode(0); // 0: fps, 1: ms
 
         // Align top-left
@@ -372,7 +379,7 @@ function init() {
         camera.updateProjectionMatrix();
     
         webGLRenderer.setSize( window.innerWidth, window.innerHeight );
-    
+        
         render();
     
     }

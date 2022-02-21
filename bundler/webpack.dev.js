@@ -28,7 +28,7 @@ module.exports = merge(
             {
                 const port = server.options.port
                 const https = server.options.https ? 's' : ''
-                const localIp = ip.v4.sync()
+                //const localIp = ip.v4.sync()
                 //const domain1 = `http${https}://${localIp}:${port}`
                 const domain2 = `http${https}://localhost:${port}`
                 
