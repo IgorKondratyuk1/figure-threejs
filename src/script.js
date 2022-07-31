@@ -7,7 +7,6 @@ import Stats from 'three/examples/jsm/libs/stats.module';
 import { VertexNormalsHelper } from 'three/examples/jsm/helpers/VertexNormalsHelper';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
 
-
 function init() {
     const stats = initStats();
     const splineHelperObjects = [];
@@ -21,7 +20,7 @@ function init() {
     const onDownPosition = new THREE.Vector2();
     const splines = {};
 
-    // For mesh geometry
+    // variables for mesh geometry
     let latheMesh;
     let latheGeometry;
     let normalsHelper;
@@ -40,9 +39,8 @@ function init() {
     plane.material.color = new THREE.Color('white');
     scene.add(plane);
 
-    // create a camera
+    // camera settings
     let camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    // position and point the camera to the center of the scene
     camera.position.x = 0;
     camera.position.y = window.innerWidth / window.innerHeight;
     camera.position.z = 100;
@@ -54,6 +52,7 @@ function init() {
     webGLRenderer.setPixelRatio( window.devicePixelRatio );
     webGLRenderer.setSize(window.innerWidth, window.innerHeight);
 
+    // controls to manage actions
     let orbitControls = new OrbitControls( camera, webGLRenderer.domElement );
     orbitControls.damping = 0.2;
     orbitControls.addEventListener( 'change', render );
@@ -68,26 +67,28 @@ function init() {
     } );
     scene.add( transformControl );
 
-    // EventListeners for Window
+    // EventListeners
     document.addEventListener( 'pointerdown', onPointerDown );
     document.addEventListener( 'pointerup', onPointerUp );
     document.addEventListener( 'pointermove', onPointerMove );
     window.addEventListener( 'resize', onWindowResize );
 
-    // add the output of the renderer to the html element
+
     document.getElementById("WebGL-output").appendChild(webGLRenderer.domElement);
 
-    // setup the control gui
+    // controls gui
     let controls = new function () {
 
         this.segments = 12;
         this.phiStart = 0;
         this.phiLength = 2 * Math.PI;
+        this.x = 0;
+        this.y = 0;
+        this.z = 0;
         this.uniform =  true;
         this.exportSpline = function () {
             const result = [];
             for ( let i = 0; i < splinePointsLength; i ++ ) {
-                //splineHelperObjects[i].position.z += 10;
                 result.push(splineHelperObjects[i].position);
             }
             return result;
@@ -108,35 +109,34 @@ function init() {
         };
     };
 
-    // Add controls 
     let gui = new dat.GUI();
     gui.add(controls, 'segments', 0, 50).step(1).onChange(controls.redraw);
     gui.add(controls, 'phiStart', 0, 2 * Math.PI).onChange(controls.redraw);
     gui.add(controls, 'phiLength', 0, 2 * Math.PI).onChange(controls.redraw);
+    gui.add(controls, 'x', 0, 100).onChange(controls.redraw);
+    gui.add(controls, 'y', 0, 100).onChange(controls.redraw);
+    gui.add(controls, 'z', 0, 100).onChange(controls.redraw);
     gui.add(controls, 'showNormals');
     gui.add(controls, 'redraw');
 
-
-    // Create points for Curve
+    // create curve points
     let pointsArr = [];
-    let height = 5;
-    let count = 30;
+    let c = 5;
+    let count = splinePointsLength - 1;
     for (let i = 0; i < count; i++) {
-        //points.push(new THREE.Vector3((Math.sin(i * 0.2) + Math.cos(i * 0.3)) * height + 12, i, ( i - count ) + count / 2));
-        pointsArr.push(new THREE.Vector3((Math.sin(i * 0.04) + Math.cos(i * 0.25)) * height + 4, i, ( i - count ) + count / 2));
+        pointsArr.push(new THREE.Vector3((Math.sin(i * 0.04) + Math.cos(i * 0.25)) * c + 4, i, ( i - count ) + count / 2));
     }
 
     let curveCR = new THREE.CatmullRomCurve3(pointsArr);
-    let points = curveCR.getPoints(30);
+    let points = curveCR.getPoints(splinePointsLength - 1);
 
-    //Curves
-    // Add dragging cubes to curve
+    // add moving squares for control
     for ( let i = 0; i < splinePointsLength; i ++ ) {
         addSplineObject( positions[ i ] );
     }
     positions.length = 0;
 
-    // Add helper for curve
+    // auxiliary functions
     for ( let i = 0; i < splinePointsLength; i ++ ) {
         positions.push( splineHelperObjects[ i ].position );
     }
@@ -144,7 +144,7 @@ function init() {
     boxGeometry = new THREE.BufferGeometry();
     boxGeometry.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( ARC_SEGMENTS * 3 ), 3 ) );
 
-    // Create CatmullRomCurve
+    // create Catmull–Rom spline
     let curve = new THREE.CatmullRomCurve3( positions );
     curve.curveType = 'catmullrom';
     curve.mesh = new THREE.Line( boxGeometry.clone(), new THREE.LineBasicMaterial( {
@@ -162,27 +162,29 @@ function init() {
     load(points);
     render();
 
-    // Generate Points for object
+    // create object points
     function generatePoints(points, segments, phiStart, phiLength) {
-
         scene.remove(latheMesh);
         scene.remove(normalsHelper);
 
-        // use the same points to create a LatheGeometry
+        // створюємо LatheGeometry
         latheGeometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
         latheMesh = createMesh(latheGeometry);
+
+        latheMesh.position.setX(controls.x);
+        latheMesh.position.setY(controls.y);
+        latheMesh.position.setZ(controls.z);
+        
         scene.add(latheMesh);
     }
 
-    // Generate Points for object and adding normals for figure
     function generatePointsWithNormals(points, segments, phiStart, phiLength) {
-
         scene.remove(latheMesh);
         scene.remove(normalsHelper);
 
-        // use the same points to create a LatheGeometry
+        // створюємо LatheGeometry
         latheGeometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
-
+        
         let meshMaterial = new THREE.MeshNormalMaterial();
         meshMaterial.side = THREE.DoubleSide;
         latheMesh = new THREE.Mesh( latheGeometry, meshMaterial );
@@ -195,13 +197,13 @@ function init() {
     }
 
     function createMesh(geom) {
-        // assign two materials
+        // material
         let meshMaterial = new THREE.MeshNormalMaterial();
         meshMaterial.side = THREE.DoubleSide;
         let wireFrameMat = new THREE.MeshBasicMaterial();
         wireFrameMat.wireframe = true;
 
-        // create a multimaterial
+        // create multi material
         let mesh = SceneUtils.createMultiMaterialObject(geom, [meshMaterial, wireFrameMat]);
         return mesh;
     }
@@ -215,9 +217,7 @@ function init() {
 
     function initStats() {
         let stats = new Stats();
-        stats.setMode(0); // 0: fps, 1: ms
-
-        // Align top-left
+        stats.setMode(0);
         stats.domElement.style.position = 'absolute';
         stats.domElement.style.left = '0px';
         stats.domElement.style.top = '0px';
@@ -226,9 +226,8 @@ function init() {
         return stats;
     }
 
-    // Function to create and add draggable cubes
+    // function of creating moving cubes
     function addSplineObject( position ) {
-
         const material = new THREE.MeshLambertMaterial( { color: Math.random() * 0xffffff } );
         const object = new THREE.Mesh( boxGeometry, material );
     
@@ -241,12 +240,11 @@ function init() {
         return object;
     }
     
-    // Function for adding dot to spline
+    // function of adding points to a spline
     function addPoint() {
         splinePointsLength ++;
         positions.push( addSplineObject().position );
         updateSplineOutline();
-    
         render();
     }
 
@@ -296,28 +294,23 @@ function init() {
     function onPointerMove( event ) {
         pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
         pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-    
         raycaster.setFromCamera( pointer, camera );
     
         const intersects = raycaster.intersectObjects( splineHelperObjects, false );
     
         if ( intersects.length > 0 ) {
-    
             const object = intersects[ 0 ].object;
-    
             if ( object !== transformControl.object ) {
                 transformControl.attach( object );
             }
         }
     }
     
-    // Resize window
+    // change the size of the window
     function onWindowResize() {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
-    
         webGLRenderer.setSize( window.innerWidth, window.innerHeight );
-        
         render();
     }
 
